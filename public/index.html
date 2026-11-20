@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0a0b0f">
+  <title>Mailbench - email delivery test suite</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2334d399' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='4' width='20' height='16' rx='2'/%3E%3Cpath d='m22 7-8.99 5.73a2 2 0 0 1-2.01 0L2 7'/%3E%3C/svg%3E">
+  <script>
+    // Dark by default; only switch to light if the user explicitly chose it.
+    if (localStorage.getItem('mb-theme') === 'light') document.documentElement.classList.remove('dark');
+  </script>
+  <script src="/vendor/tailwind-browser.js"></script>
+  <style type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+    @theme {
+      --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --color-ink-950: #0a0b0f;
+      --color-ink-900: #0f1117;
+      --color-ink-850: #141720;
+      --color-ink-800: #1a1e29;
+      --color-ink-700: #252a38;
+      --color-ink-600: #343b4e;
+    }
+    @layer components {
+      .card { @apply rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-850 dark:shadow-none; }
+      .card-title { @apply flex items-center gap-2 text-sm font-semibold; }
+      .field { @apply w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25 dark:border-ink-600 dark:bg-ink-900 dark:text-zinc-100 dark:placeholder:text-zinc-500; }
+      .field[aria-invalid="true"] { @apply border-rose-500 ring-2 ring-rose-500/20; }
+      .label { @apply mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400; }
+      .btn { @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-50; }
+      .btn-primary { @apply bg-emerald-500 text-ink-950 hover:bg-emerald-400 active:bg-emerald-600; }
+      .btn-ghost { @apply border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-ink-600 dark:text-zinc-300 dark:hover:bg-ink-800; }
+      .btn-sm { @apply !px-2.5 !py-1.5 text-xs; }
+      .btn-icon { @apply inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 text-zinc-600 transition hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-ink-600 dark:text-zinc-300 dark:hover:bg-ink-800; }
+      .pill { @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap; }
+      .chip { @apply cursor-pointer rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs text-zinc-600 transition hover:border-emerald-500 hover:text-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-ink-600 dark:text-zinc-400; }
+      .stat-num { @apply font-mono text-2xl font-semibold tabular-nums leading-none; }
+      .subtle { @apply text-zinc-500 dark:text-zinc-400; }
+      .well { @apply rounded-lg bg-zinc-100 dark:bg-ink-900; }
+    }
+    [data-lucide], svg.lucide { width: 1em; height: 1em; flex: none; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+    .pop { animation: pop .18s ease-out; }
+    @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) { .spin, .pop, .pulse-dot { animation: none; } }
+    .bar { transition: width .4s ease; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #343b4e; border-radius: 8px; }
+    body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background: radial-gradient(60rem 28rem at 8% -8%, rgba(16,185,129,.07), transparent 70%), radial-gradient(40rem 24rem at 100% 0, rgba(99,102,241,.06), transparent 70%); }
+    dialog { max-height: 90vh; overflow: auto; }
+    dialog[open] { animation: pop .18s ease-out; }
+    /* mobile: one pane at a time, switched from the bottom tab bar */
+    @media (max-width: 1023px) {
+      [data-pane] { display: none; }
+      body[data-view="compose"] [data-pane="compose"],
+      body[data-view="dashboard"] [data-pane="dashboard"],
+      body[data-view="activity"] [data-pane="activity"] { display: block; }
+    }
+  </style>
+</head>
+<body data-view="compose" class="min-h-screen bg-zinc-50 pb-20 font-sans text-zinc-800 antialiased lg:pb-0 dark:bg-ink-950 dark:text-zinc-200">
+
+  <a href="#compose-section" class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-emerald-500 focus:px-3 focus:py-2 focus:text-ink-950">Skip to compose</a>
+
+  <header class="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-ink-700 dark:bg-ink-950/80">
+    <div class="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
+      <div class="flex min-w-0 shrink items-center gap-2.5">
+        <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-500"><i data-lucide="mail" class="text-lg"></i></span>
+        <div class="min-w-0 leading-tight">
+          <h1 class="flex items-center gap-2 text-sm font-semibold whitespace-nowrap">Mailbench <span id="env-badge" class="pill !px-2 !py-0 border-zinc-300 text-[10px] uppercase text-zinc-500 dark:border-ink-600 dark:text-zinc-400">dev</span></h1>
+          <p class="subtle hidden truncate text-xs sm:block">EmailJS + Resend delivery test suite</p>
+        </div>
+      </div>
+
+      <div class="ml-auto flex shrink-0 items-center gap-2">
+        <span id="redis-pill" class="pill" title="Redis connection"></span>
+        <span id="workers-pill" class="pill hidden sm:inline-flex" title="Queue worker processes"></span>
+        <button id="btn-live" class="btn-icon hidden sm:inline-flex" type="button" aria-pressed="true" title="Live updates"><i data-lucide="activity"></i></button>
+        <button id="btn-refresh" class="btn-icon hidden sm:inline-flex" type="button" title="Refresh now"><i data-lucide="refresh-cw"></i></button>
+        <button id="btn-setup" class="btn-icon" type="button" title="Setup guide"><i data-lucide="book-open-check"></i></button>
+        <button id="btn-diag" class="btn-icon hidden sm:inline-flex" type="button" title="Run diagnostics"><i data-lucide="stethoscope"></i></button>
+        <button id="btn-key" class="btn-icon hidden" type="button" title="Access token"><i data-lucide="key-round"></i></button>
+        <button id="btn-theme" class="btn-icon" type="button" title="Toggle theme"><i data-lucide="sun"></i></button>
+      </div>
+    </div>
+  </header>
+
+  <div id="banner" class="hidden"></div>
+
+  <main class="mx-auto grid max-w-7xl grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-5">
+
+    <!-- COMPOSE -->
+    <section id="compose-section" data-pane="compose" class="card min-w-0 p-5 lg:col-span-2" aria-labelledby="compose-title">
+      <div class="mb-4 flex items-center justify-between gap-2">
+        <h2 id="compose-title" class="card-title"><i data-lucide="send" class="text-emerald-500"></i> Compose test email</h2>
+        <div class="flex gap-1.5">
+          <button id="btn-sample" type="button" class="btn btn-ghost btn-sm"><i data-lucide="wand-sparkles"></i> Sample</button>
+          <button id="btn-clear-form" type="button" class="btn btn-ghost btn-sm" title="Clear the form"><i data-lucide="eraser"></i></button>
+        </div>
+      </div>
+
+      <!-- mode switch -->
+      <div id="mode-switch" role="radiogroup" aria-label="Sending mode" class="mb-5 grid grid-cols-2 gap-1 rounded-xl border border-zinc-200 bg-zinc-100 p-1 dark:border-ink-700 dark:bg-ink-900">
+        <button type="button" role="radio" data-mode="direct" class="mode-btn flex cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left transition">
+          <span class="flex items-center gap-2"><i data-lucide="zap"></i><span><span class="block text-sm font-semibold leading-tight">Direct</span><span class="block text-[11px] leading-tight opacity-70">no queue</span></span></span>
+          <span class="mode-count font-mono text-xs tabular-nums" id="mode-count-direct" title="Emails in flight">0</span>
+        </button>
+        <button type="button" role="radio" data-mode="queued" class="mode-btn flex cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left transition">
+          <span class="flex items-center gap-2"><i data-lucide="layers"></i><span><span class="block text-sm font-semibold leading-tight">Queued</span><span class="block text-[11px] leading-tight opacity-70">BullMQ + Redis</span></span></span>
+          <span class="mode-count font-mono text-xs tabular-nums" id="mode-count-queued" title="Emails waiting or active">0</span>
+        </button>
+      </div>
+
+      <form id="send-form" class="space-y-4" novalidate>
+        <div>
+          <label class="label" for="f-to"><i data-lucide="at-sign"></i> To</label>
+          <input id="f-to" name="to" type="email" class="field" placeholder="you@example.com" autocomplete="email" inputmode="email" required>
+          <p id="err-to" class="mt-1 hidden text-xs text-rose-500"></p>
+        </div>
+        <div>
+          <label class="label" for="f-subject"><i data-lucide="text-cursor-input"></i> Subject</label>
+          <input id="f-subject" name="subject" type="text" class="field" placeholder="Queue test" maxlength="200" required>
+          <p id="err-subject" class="mt-1 hidden text-xs text-rose-500"></p>
+        </div>
+        <div>
+          <label class="label" for="f-message"><i data-lucide="message-square-text"></i> Message <span id="msg-count" class="ml-auto font-mono normal-case tracking-normal">0</span></label>
+          <textarea id="f-message" name="message" rows="5" class="field resize-y" placeholder="Write something..." maxlength="20000" required></textarea>
+          <p id="err-message" class="mt-1 hidden text-xs text-rose-500"></p>
+        </div>
+
+        <div>
+          <span class="label"><i data-lucide="paperclip"></i> Attachment <span class="ml-auto normal-case tracking-normal" id="att-limit"></span></span>
+          <input id="f-file" type="file" class="sr-only">
+          <label id="dropzone" for="f-file" class="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-zinc-300 px-3 py-3 text-sm text-zinc-500 transition hover:border-emerald-500 hover:text-emerald-500 focus-within:border-emerald-500 dark:border-ink-600 dark:text-zinc-400">
+            <i data-lucide="upload" class="text-lg"></i>
+            <span id="dz-text">Drop a file or click to browse</span>
+          </label>
+          <div id="att-chip" class="mt-2 hidden items-center gap-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm dark:bg-ink-800">
+            <i data-lucide="file" class="text-emerald-500"></i>
+            <span id="att-name" class="min-w-0 flex-1 truncate"></span>
+            <span id="att-size" class="font-mono text-xs text-zinc-500"></span>
+            <button id="att-remove" type="button" class="cursor-pointer text-zinc-400 hover:text-rose-500" aria-label="Remove attachment"><i data-lucide="x"></i></button>
+          </div>
+          <p id="err-attachment" class="mt-1 hidden text-xs text-rose-500"></p>
+        </div>
+
+        <fieldset>
+          <legend class="label"><i data-lucide="plug-zap"></i> Providers <span class="ml-auto normal-case tracking-normal">pick several to load-balance</span></legend>
+          <div id="provider-list" class="grid grid-cols-1 gap-2 sm:grid-cols-2"></div>
+          <p id="err-providers" class="mt-1 hidden text-xs text-rose-500"></p>
+        </fieldset>
+
+        <div class="space-y-4">
+          <div>
+            <label class="label" for="f-count"><i data-lucide="copy"></i> Burst size <span id="count-val" class="ml-auto font-mono normal-case tracking-normal">1</span></label>
+            <input id="f-count" type="range" min="1" max="10" value="1" class="w-full cursor-pointer accent-emerald-500">
+            <div class="mt-2 flex flex-wrap items-center gap-1.5">
+              <span id="burst-presets" class="flex flex-wrap gap-1.5"></span>
+              <span id="count-hint" class="subtle ml-auto text-xs"></span>
+            </div>
+          </div>
+          <div id="fail-wrap" class="hidden">
+            <label class="label" for="f-fail"><i data-lucide="triangle-alert"></i> Simulated failures <span id="fail-val" class="ml-auto font-mono normal-case tracking-normal">0%</span></label>
+            <input id="f-fail" type="range" min="0" max="100" step="5" value="0" class="w-full cursor-pointer accent-rose-500">
+            <p class="subtle mt-1 text-xs">Simulator providers only. Exercises retries and failover.</p>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="btn-send" type="submit" class="btn btn-primary flex-1 !py-3"><i data-lucide="send"></i><span id="send-label">Send email</span></button>
+          <button id="btn-bench" type="button" class="btn btn-ghost !py-3" title="Send the same burst in Direct and then Queued mode and compare"><i data-lucide="git-compare-arrows"></i><span class="hidden sm:inline">A/B</span></button>
+        </div>
+        <p id="send-note" class="subtle text-center text-xs"></p>
+        <div class="flex items-center justify-center gap-3 text-xs">
+          <button id="btn-curl" type="button" class="subtle inline-flex cursor-pointer items-center gap-1 hover:text-emerald-500"><i data-lucide="terminal"></i> Copy as cURL</button>
+          <span class="subtle hidden sm:inline">&middot;</span>
+          <span class="subtle hidden items-center gap-1 sm:inline-flex"><kbd class="rounded border border-zinc-300 px-1 font-mono text-[10px] dark:border-ink-600">Ctrl</kbd>+<kbd class="rounded border border-zinc-300 px-1 font-mono text-[10px] dark:border-ink-600">Enter</kbd> to send</span>
+        </div>
+      </form>
+
+      <div id="last-result" class="mt-4 hidden"></div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section class="min-w-0 space-y-5 lg:col-span-3" aria-label="Live dashboard">
+      <div data-pane="dashboard" class="space-y-5">
+        <div id="mode-panels" class="grid grid-cols-1 gap-5 md:grid-cols-2"></div>
+
+        <div class="card p-5">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 class="card-title"><i data-lucide="scale" class="text-emerald-500"></i> Providers &amp; load balancing</h2>
+            <div class="flex flex-wrap gap-2">
+              <button id="btn-pause" type="button" class="btn btn-ghost btn-sm"><i data-lucide="pause"></i> <span>Pause queues</span></button>
+              <button id="btn-clear-q" type="button" class="btn btn-ghost btn-sm"><i data-lucide="eraser"></i> Clear waiting</button>
+              <button id="btn-reset" type="button" class="btn btn-ghost btn-sm"><i data-lucide="rotate-ccw"></i> Reset</button>
+            </div>
+          </div>
+          <div id="distribution" class="mb-4"></div>
+          <div id="provider-table" class="space-y-3"></div>
+          <p class="well subtle mt-4 flex items-start gap-2 p-3 text-xs">
+            <i data-lucide="info" class="mt-0.5 shrink-0"></i>
+            <span>Each new email goes to the selected provider with the shortest estimated wait, <code class="font-mono">(pending + 1) / requests-per-second</code>. An empty queue takes the next job, a busy one is skipped, and an email that fails permanently is failed over to another selected provider. Providers out of free-tier quota are skipped.</span>
+          </p>
+        </div>
+      </div>
+
+      <div data-pane="activity" class="card min-w-0 p-5">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="card-title"><i data-lucide="scroll-text" class="text-emerald-500"></i> Activity <span id="log-count" class="subtle font-mono text-xs font-normal"></span></h2>
+          <div class="flex items-center gap-2">
+            <button id="btn-export" type="button" class="btn-icon !size-8" title="Download as CSV"><i data-lucide="download"></i></button>
+            <button id="btn-clear-log" type="button" class="btn-icon !size-8" title="Clear log"><i data-lucide="trash-2"></i></button>
+          </div>
+        </div>
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <div class="relative min-w-40 flex-1">
+            <i data-lucide="search" class="subtle pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm"></i>
+            <input id="log-q" type="search" class="field !py-1.5 !pl-8 text-xs" placeholder="Search recipient, subject, error..." aria-label="Search activity">
+          </div>
+          <div id="log-filter" class="flex rounded-lg border border-zinc-200 p-0.5 text-xs dark:border-ink-700" role="group" aria-label="Filter activity">
+            <button type="button" data-f="all" class="cursor-pointer rounded-md px-2.5 py-1">All</button>
+            <button type="button" data-f="direct" class="cursor-pointer rounded-md px-2.5 py-1">Direct</button>
+            <button type="button" data-f="queued" class="cursor-pointer rounded-md px-2.5 py-1">Queued</button>
+            <button type="button" data-f="failed" class="cursor-pointer rounded-md px-2.5 py-1">Problems</button>
+          </div>
+        </div>
+        <ol id="log" class="max-h-[34rem] space-y-1 overflow-y-auto pr-1"></ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="subtle mx-auto hidden max-w-7xl px-4 pb-8 text-center text-xs lg:block">
+    Free-tier test harness. Quotas: EmailJS 200/month &middot; Resend 100/day, counted by this app. <span id="updated"></span>
+  </footer>
+
+  <!-- mobile tab bar -->
+  <nav id="tabbar" class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-zinc-200 bg-white/95 backdrop-blur lg:hidden dark:border-ink-700 dark:bg-ink-950/95" aria-label="Sections">
+    <button type="button" data-view="compose" class="tab"><i data-lucide="send"></i><span>Compose</span></button>
+    <button type="button" data-view="dashboard" class="tab"><i data-lucide="layout-dashboard"></i><span>Dashboard</span><b id="tab-badge" class="hidden"></b></button>
+    <button type="button" data-view="activity" class="tab"><i data-lucide="scroll-text"></i><span>Activity</span></button>
+  </nav>
+
+  <!-- dialog: diagnostics -->
+  <dialog id="dlg-diag" class="m-auto w-[min(34rem,92vw)] rounded-xl border border-zinc-200 bg-white p-0 text-zinc-800 backdrop:bg-black/60 dark:border-ink-700 dark:bg-ink-850 dark:text-zinc-200">
+    <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-ink-700">
+      <h3 class="card-title"><i data-lucide="stethoscope" class="text-emerald-500"></i> Diagnostics</h3>
+      <button type="button" class="cursor-pointer text-zinc-400 hover:text-emerald-500" data-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div id="diag-body" class="space-y-2 px-5 py-4 text-sm"></div>
+    <div class="flex justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-ink-700">
+      <button id="btn-diag-run" type="button" class="btn btn-primary btn-sm"><i data-lucide="refresh-cw"></i> Run again</button>
+    </div>
+  </dialog>
+
+  <!-- dialog: setup guide -->
+  <dialog id="dlg-setup" class="m-auto w-[min(40rem,94vw)] rounded-xl border border-zinc-200 bg-white p-0 text-zinc-800 backdrop:bg-black/60 dark:border-ink-700 dark:bg-ink-850 dark:text-zinc-200">
+    <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-ink-700">
+      <h3 class="card-title"><i data-lucide="book-open-check" class="text-emerald-500"></i> Setup guide</h3>
+      <button type="button" class="cursor-pointer text-zinc-400 hover:text-emerald-500" data-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div id="setup-body" class="space-y-4 px-5 py-4 text-sm"></div>
+    <div class="flex justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-ink-700">
+      <button id="btn-setup-diag" type="button" class="btn btn-primary btn-sm"><i data-lucide="stethoscope"></i> Run diagnostics</button>
+    </div>
+  </dialog>
+
+  <!-- dialog: A/B benchmark -->
+  <dialog id="dlg-bench" class="m-auto w-[min(40rem,94vw)] rounded-xl border border-zinc-200 bg-white p-0 text-zinc-800 backdrop:bg-black/60 dark:border-ink-700 dark:bg-ink-850 dark:text-zinc-200">
+    <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-ink-700">
+      <h3 class="card-title"><i data-lucide="git-compare-arrows" class="text-emerald-500"></i> Direct vs Queued benchmark</h3>
+      <button type="button" class="cursor-pointer text-zinc-400 hover:text-emerald-500" data-close aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div id="bench-body" class="px-5 py-4 text-sm"></div>
+  </dialog>
+
+  <!-- dialog: access token -->
+  <dialog id="dlg-key" class="m-auto w-[min(26rem,92vw)] rounded-xl border border-zinc-200 bg-white p-0 text-zinc-800 backdrop:bg-black/60 dark:border-ink-700 dark:bg-ink-850 dark:text-zinc-200">
+    <form method="dialog" id="key-form" class="space-y-3 p-5">
+      <h3 class="card-title"><i data-lucide="lock" class="text-emerald-500"></i> Access token required</h3>
+      <p class="subtle text-xs">This deployment sets <code class="font-mono">ACCESS_TOKEN</code>. Enter it to use the API. It is kept in this tab only (sessionStorage).</p>
+      <input id="key-input" type="password" class="field font-mono" placeholder="ACCESS_TOKEN" autocomplete="off" aria-label="Access token">
+      <p id="key-err" class="hidden text-xs text-rose-500">That token was rejected.</p>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Unlock</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="pointer-events-none fixed right-4 bottom-20 z-50 flex w-[min(24rem,92vw)] flex-col gap-2 lg:bottom-4" aria-live="polite"></div>
+
+  <style type="text/tailwindcss">
+    .tab { @apply relative flex cursor-pointer flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium text-zinc-500 transition dark:text-zinc-400; }
+    .tab [data-lucide], .tab svg { width: 1.25rem; height: 1.25rem; }
+    .tab[aria-current="page"] { @apply text-emerald-500; }
+    .tab[aria-current="page"]::before { content: ""; @apply absolute top-0 h-0.5 w-10 rounded-full bg-emerald-500; }
+    #tab-badge { @apply absolute top-1.5 left-1/2 ml-2 min-w-4 rounded-full bg-emerald-500 px-1 text-center font-mono text-[10px] leading-4 text-ink-950; }
+  </style>
+
+  <script src="/vendor/lucide.min.js"></script>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
